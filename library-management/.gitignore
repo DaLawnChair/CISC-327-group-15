@@ -1,4 +1,6 @@
-.venv/
+# coverage output
+htmlcov/
+.coverage
+# Python cache and virtual environments
 __pycache__/
-*.pyc
-.pytest_cache/
+.venv/

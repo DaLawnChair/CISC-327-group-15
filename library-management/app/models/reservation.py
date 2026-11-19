@@ -2,12 +2,14 @@ from datetime import date
 
 
 class Reservation:
-    def __init__(self, id, book_id, member_id, reservation_date=None, fulfilled=False):
+    def __init__(self, id, book_id, member_id, reservation_date=None, fulfilled=False,
+                 notified=False):
         self.id = id
         self.book_id = book_id
         self.member_id = member_id
         self.reservation_date = reservation_date or date.today()
         self.fulfilled = fulfilled
+        self.notified = notified  # True once a hold-available notification was sent
 
     def to_dict(self):
         return {
@@ -16,6 +18,7 @@ class Reservation:
             "member_id": self.member_id,
             "reservation_date": self.reservation_date.isoformat(),
             "fulfilled": self.fulfilled,
+            "notified": self.notified,
         }
 
 

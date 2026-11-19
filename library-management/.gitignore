@@ -4,5 +4,3 @@ htmlcov/
 # Python cache and virtual environments
 __pycache__/
 .venv/
-.pytest_cache/
-*.pyc

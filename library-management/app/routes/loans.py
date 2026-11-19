@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 from app import store
 from app.models.loan import Loan, RENEWAL_DAYS
 from app.models.reservation import active_holds
+from notification_service import send_notification
 
 FINE_PER_DAY = 0.25  # dollars charged per day overdue
 
@@ -47,6 +48,31 @@ def fulfil_hold(book_id, member_id):
         if hold.member_id == member_id:
             hold.fulfilled = True
             return
+
+
+HOLD_READY_SUBJECT = "Your hold is ready for pickup"
+
+
+def notify_next_hold(book):
+    """Notify the next member in the hold queue that a returned copy is waiting.
+
+    Only holds that are still active and have not been notified yet are
+    considered. Returns None when no notification is due, otherwise a summary
+    of the attempt. A failed notification never undoes the return: the hold
+    stays un-notified so it is tried again when the next copy comes back.
+    """
+    for hold in active_holds(store.reservations.values(), book.id):
+        if hold.notified:
+            continue
+        member = store.members.get(hold.member_id)
+        if member is None:
+            continue
+        message = (f"Hi {member.name}, a copy of '{book.title}' has been returned "
+                   f"and is being held for you.")
+        sent = send_notification(member.email, HOLD_READY_SUBJECT, message)
+        hold.notified = sent
+        return {"reservation_id": hold.id, "member_id": member.id, "sent": sent}
+    return None
 
 
 @loans_bp.route("", methods=["GET"])
@@ -103,7 +129,9 @@ def return_book(loan_id):
     book = store.books.get(loan.book_id)
     book.available_copies += 1
 
-    return jsonify(loan.to_dict())
+    result = loan.to_dict()
+    result["hold_notification"] = notify_next_hold(book)
+    return jsonify(result)
 
 
 @loans_bp.route("/<int:loan_id>/renew", methods=["PUT"])

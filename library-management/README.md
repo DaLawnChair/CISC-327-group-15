@@ -52,7 +52,7 @@ app working without a REST client, and calls the same in-memory store.
 | PUT | `/members/<id>` | Update a member |
 | DELETE | `/members/<id>` | Delete a member |
 | POST | `/loans` | Check out a book (`book_id`, `member_id`) |
-| PUT | `/loans/<id>/return` | Return a loaned book |
+| PUT | `/loans/<id>/return` | Return a loaned book; notifies the next member on hold (see below) |
 | GET | `/loans?member_id=&book_id=` | Look up loans |
 | PUT | `/loans/<id>/renew` | Renew a loan: due date becomes today + 7 days (409 if another member has a hold) |
 | POST | `/reservations` | Place a hold on a book (`book_id`, `member_id`) |
@@ -82,6 +82,17 @@ queue, or when no copies are available. When the member at the front of the queu
 checks out the book, their hold is marked `fulfilled: true`. A loan cannot be
 renewed (HTTP 409) while another member has a hold on the book; otherwise a
 renewal sets the due date to 7 days from the day of renewal and can be repeated.
+
+### Hold-available notifications
+
+When a loan is returned (`PUT /loans/<id>/return` or the web form) and the book
+has an active hold, the next member in the hold queue who has not been notified
+yet receives a notification through `notification_service.send_notification()`
+(a local simulator next to `run.py`; no real email is sent). The API response
+includes `hold_notification`: `null` when no notification was due, otherwise
+`{"reservation_id", "member_id", "sent"}`. If sending fails, the return still
+succeeds, `sent` is `false`, and the reservation's `notified` stays `false` so
+the member is tried again when the next copy is returned.
 
 ## Tests
 

@@ -6,7 +6,8 @@ from app import store
 from app.models.book import Book
 from app.models.loan import Loan
 from app.models.member import Member
-from app.routes.loans import fulfil_hold, hold_conflict, member_outstanding_fines
+from app.routes.loans import (fulfil_hold, hold_conflict, member_outstanding_fines,
+                              notify_next_hold)
 
 views_bp = Blueprint("views", __name__)
 
@@ -90,4 +91,5 @@ def return_loan_page(loan_id):
         book = store.books.get(loan.book_id)
         if book is not None:
             book.available_copies += 1
+            notify_next_hold(book)
     return redirect(url_for("views.loans_page"))

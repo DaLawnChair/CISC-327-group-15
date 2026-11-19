@@ -112,3 +112,87 @@ def test_simulator_records_hold_notification_with_library_prefix(client):
         "message": "Hi Bob, a copy of 'Dune' has been returned and is being held for you.",
     }]
     notification_service.clear_notifications()
+
+
+# ---------- coverage: loans web pages (views.py) ----------
+
+def test_home_page_links_to_all_sections(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    for path in ("/ui/books", "/ui/members", "/ui/loans"):
+        assert path in html
+
+
+def test_loans_page_lists_existing_loans(client):
+    book = make_book(client)
+    alice = make_member(client)
+    loan = client.post("/loans", json={"book_id": book["id"], "member_id": alice["id"]}).get_json()
+
+    response = client.get("/ui/loans")
+
+    assert response.status_code == 200
+    assert loan["due_date"] in response.get_data(as_text=True)
+
+
+def test_web_checkout_creates_loan_and_takes_a_copy(client):
+    book = make_book(client, copies=2)
+    alice = make_member(client)
+
+    response = client.post("/ui/loans", data={"book_id": book["id"], "member_id": alice["id"]})
+
+    assert response.status_code == 302
+    loans = client.get("/loans").get_json()
+    assert len(loans) == 1 and loans[0]["member_id"] == alice["id"]
+    assert loans[0]["due_date"] == (date.today() + timedelta(days=14)).isoformat()
+    assert client.get(f"/books/{book['id']}").get_json()["available_copies"] == 1
+
+
+def test_web_checkout_refused_while_member_has_outstanding_fine(client):
+    book = make_book(client, copies=2)
+    alice = make_member(client)
+    loan = client.post("/loans", json={"book_id": book["id"], "member_id": alice["id"]}).get_json()
+    store.loans[loan["id"]].due_date = date.today() - timedelta(days=2)   # overdue
+
+    response = client.post("/ui/loans", data={"book_id": book["id"], "member_id": alice["id"]})
+
+    assert response.status_code == 409
+    assert "Outstanding fines" in response.get_data(as_text=True)
+    assert len(client.get("/loans").get_json()) == 1
+    assert client.get(f"/books/{book['id']}").get_json()["available_copies"] == 1
+
+
+def test_web_checkout_refused_when_copy_is_held_for_someone_else(client):
+    book = make_book(client, copies=1)
+    bob = make_member(client, "Bob", "bob@example.com")
+    carol = make_member(client, "Carol", "carol@example.com")
+    client.post("/reservations", json={"book_id": book["id"], "member_id": bob["id"]})
+
+    response = client.post("/ui/loans", data={"book_id": book["id"], "member_id": carol["id"]})
+
+    assert response.status_code == 409
+    assert response.get_data(as_text=True) == "Book is on hold for another member"
+    assert client.get("/loans").get_json() == []
+
+
+def test_web_checkout_of_unknown_book_creates_no_loan(client):
+    alice = make_member(client)
+
+    response = client.post("/ui/loans", data={"book_id": 999, "member_id": alice["id"]})
+
+    assert response.status_code == 302
+    assert client.get("/loans").get_json() == []
+
+
+def test_web_return_sets_return_date_and_restores_copy_once(client):
+    book = make_book(client, copies=1)
+    alice = make_member(client)
+    loan = client.post("/loans", json={"book_id": book["id"], "member_id": alice["id"]}).get_json()
+
+    first = client.post(f"/ui/loans/{loan['id']}/return")
+    second = client.post(f"/ui/loans/{loan['id']}/return")   # already returned
+
+    assert first.status_code == 302 and second.status_code == 302
+    assert store.loans[loan["id"]].return_date == date.today()
+    assert client.get(f"/books/{book['id']}").get_json()["available_copies"] == 1

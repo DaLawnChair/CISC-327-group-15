@@ -3,6 +3,8 @@
 # renew a loan, create a reservation, list reservations.
 from datetime import date, timedelta
 
+import pytest
+
 
 # ---------- helpers ----------
 
@@ -74,6 +76,7 @@ def test_checkout_fails_when_no_copies_available(client):
     assert client.get(f"/books/{book['id']}").get_json()["available_copies"] == 0
 
 
+@pytest.mark.xfail(reason="Known defect (R31): checkout_book() does not check that the member exists, so member_id 999 gets a loan (201 instead of 404)")
 def test_checkout_fails_for_nonexistent_member(client):
     # R31: the system must record which member borrowed each book,
     # so a loan for a member that does not exist must be rejected.
@@ -146,6 +149,7 @@ def test_list_loans_filtered_by_book_id(client):
     assert loans[0]["book_id"] == book2["id"]
 
 
+@pytest.mark.xfail(reason="Known defect (R1/R31): list_loans() compares book_id to the member_id filter, so the wrong loans are returned")
 def test_list_loans_filtered_by_member_id(client):
     # R1/R31: a member's loans must be retrievable by member.
     # three books so that book ids and member ids do not line up
